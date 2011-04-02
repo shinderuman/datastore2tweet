@@ -1,4 +1,0 @@
-cron:
-- description: dorohedorobot cron
-  url: /tweetbot/dorohedorobot
-  schedule: every 1 hours
