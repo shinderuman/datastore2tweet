@@ -7,6 +7,8 @@ import gdata.spreadsheet.text_db
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
 from google.appengine.ext import db
+from google.appengine.api import users
+import logging
 
 G_DOC_MIN_RECORD   = 1
 G_DOC_MAX_RECORD   = 200000
@@ -19,7 +21,7 @@ class BotDataModel(db.Model):
   status = db.StringProperty()
 
 class MasterBotDataModel(db.Model):
-  id = db.IntegerProperty()
+  mid = db.IntegerProperty()
   name = db.StringProperty()
   type = db.StringProperty()
   cron = db.StringProperty()
@@ -42,15 +44,15 @@ class SeqDataModel(db.Model):
 class Sheet2DatastoreHandler(webapp.RequestHandler):
 
   def get(self):
-    # TODO get from MasterBotDataModel
-    mid = 1
-    name = 'ドロヘドロbot'
-    gUser = ''
-    gPass = ''
-    gDocFile = 'ドロヘドロ'
-    gDocTbl = 'Sheet1'
-    statusFormat = '「%s」魔の%s'
-    statusColumns = ['comments', 'chapter']
+    data = db.GqlQuery('SELECT * FROM MasterBotDataModel WHERE mid = :1', int(self.request.get('mid'))).get()
+    mid = data.mid
+    name = data.name
+    gUser = data.gUser
+    gPass = data.gPass
+    gDocFile = data.gDocFile.encode('utf_8')
+    gDocTbl = data.gDocTbl.encode('utf_8')
+    statusFormat = data.statusFormat
+    statusColumns = data.statusColumns
 
     q = db.GqlQuery("SELECT * FROM BotDataModel WHERE mid = :1", mid)
     for result in q:
@@ -62,7 +64,7 @@ class Sheet2DatastoreHandler(webapp.RequestHandler):
     seq = 0
     for record in table.GetRecords(G_DOC_MIN_RECORD, G_DOC_MAX_RECORD):
       content = record.content
-
+      
       length = 10 + 10
       for column in statusColumns:
         length = length + len(content[column])
@@ -72,10 +74,12 @@ class Sheet2DatastoreHandler(webapp.RequestHandler):
         data  = BotDataModel()
         data.mid = mid
         data.seq = seq
-        data.status = unicode(statusFormat, 'utf8') % tuple([content[x] for x in statusColumns])
+        data.status = statusFormat % tuple([content[x] for x in statusColumns])
         data.put()
 
-    self.response.out.write(u'%sに%dレコード入れました' % (unicode(name, 'utf8'), seq))
+    self.response.out.write(u'%sに%dレコード入れました' % (name, seq))
+    self.response.out.write(u'&nbsp;<a href="masterlist">戻る</a>')
+
 
 class Datastore2TweetHandler(webapp.RequestHandler):
   
@@ -83,16 +87,127 @@ class Datastore2TweetHandler(webapp.RequestHandler):
     data = BotDataModel.all().get()
     self.response.out.write(unicode(data.status))
       
+class AdminMasterListRequestHandler(webapp.RequestHandler):
+  def get(self):
+    self.response.out.write('<html><body><table>')
+
+    for data in MasterBotDataModel.all():
+      self.response.out.write('  <tr><td>')
+      self.response.out.write(data.name.encode('utf_8'))
+      self.response.out.write('  </td><td>')
+      self.response.out.write('    <a href="masterinput?mid=' + str(data.mid) + '">マスター更新</a>')
+      self.response.out.write('  </td><td>')
+      self.response.out.write('    <a href="sheet2datastore?mid=' + str(data.mid) + '">データインポート</a>')
+      self.response.out.write('  </td></tr>')
+
+    self.response.out.write("""
+  <tr><td colspan="3">
+    <a href="masterinput">新規登録</a>
+  </td></tr>
+
+</table></body></html>""")
+
+class AdminMasterInputRequestHandler(webapp.RequestHandler):
+  def get(self):
+    self.response.out.write('<html><body><form action="mastersubmit" method="post"><table>')
+
+    html = """
+  <tr><td colspan="2">基本情報</td></tr>
+  <tr><td>ID</td><td><input type="text" name="mid" value="%d"/></td></tr>
+  <tr><td>bot名</td><td><input type="text" name="name" value="%s"/></td></tr>
+  <tr><td>botタイプ</td><td><select name="type">
+    <option value="rnd">ランダム</option>
+    <option value="seq">順番</option>
+  </select></td></tr>
+  <tr><td>起動間隔</td><td><input type="text" name="cron" value="%s"/></td></tr>
+  <tr><td colspan="2">Twitter認証</td></tr>
+  <tr><td>TWITTER_CONSUMER_KEY</td><td><input type="text" name="cKey" value="%s"/></td></tr>
+  <tr><td>TWITTER_CONSUMER_SECRET</td><td><input type="text" name="cSecret" value="%s"/></td></tr>
+  <tr><td>TWITTER_ACCESS_TOKEN</td><td><input type="text" name="aToken" value="%s"/></td></tr>
+  <tr><td>TWITTER_ACCESS_TOKEN_SECRET</td><td><input type="text" name="aTokenSecret" value="%s"/></td></tr>
+  <tr><td colspan="2">GoogleDocs認証</td></tr>
+  <tr><td>GoogleMailAddress</td><td><input type="text" name="gUser" value="%s"/></td></tr>
+  <tr><td>GooglePassword</td><td><input type="text" name="gPass" value="%s"/></td></tr>
+  <tr><td>GoogleDocファイル名</td><td><input type="text" name="gDocFile" value="%s"/></td></tr>
+  <tr><td>GoogleDocシート名</td><td><input type="text" name="gDocTbl" value="%s"/></td></tr>
+  <tr><td colspan="2">その他</td></tr>
+  <tr><td>ステータスのフォーマット</td><td><input type="text" name="statusFormat" value="%s"/></td></tr>
+  <tr><td>ステータスの置換カラム(,)</td><td><input type="text" name="statusColumns" value="%s"/></td></tr>
+  <tr><td>有効</td><td><input type="checkbox" name="enabled" %s /></td></tr>
+"""
+    if self.request.get('mid') != '':
+      data = db.GqlQuery('SELECT * FROM MasterBotDataModel WHERE mid = :1', int(self.request.get('mid'))).get()
+
+      mid = data.mid
+      name = data.name.encode('utf_8')
+      cron = data.cron.encode('utf_8')
+      cKey = data.cKey.encode('utf_8')
+      cSecret = data.cSecret.encode('utf_8')
+      aToken = data.aToken.encode('utf_8')
+      aTokenSecret = data.aTokenSecret.encode('utf_8')
+      gUser = data.gUser.encode('utf_8')
+      gPass = data.gPass.encode('utf_8')
+      gDocFile = data.gDocFile.encode('utf_8')
+      gDocTbl = data.gDocTbl.encode('utf_8')
+      statusFormat = data.statusFormat.encode('utf_8')
+      statusColumns = ",".join(data.statusColumns).encode('utf_8')
+      enabled = 'checked="checked"' if data.enabled else ''
+
+      self.response.out.write(html % (mid, name, cron, cKey, cSecret,aToken, aTokenSecret, 
+                                      gUser, gPass, gDocFile, gDocTbl, 
+                                      statusFormat, statusColumns, enabled))
+
+    else:
+      self.response.out.write(html % (0, '', '', '', '', '', '', '', '', '', '', '', '', 'checked="checked"'))
+
+    self.response.out.write("""
+  <tr><td colspan="2">
+    <input type="submit" value="登録" />
+  </td></tr>
+
+</table></form></body></html>""")
+
+class AdminMasterSubmitRequestHandler(webapp.RequestHandler):
+  def post(self):
+    data = db.GqlQuery('SELECT * FROM MasterBotDataModel WHERE mid = :1', int(self.request.get('mid'))).get()
+    if data == None:
+      data = MasterBotDataModel()
+    
+    data.mid = int(self.request.get('mid'))
+    data.name = unicode(self.request.get('name'))
+    data.type = self.request.get('type')
+    data.cron = self.request.get('cron')
+    data.cKey = self.request.get('cKey')
+    data.cSecret = self.request.get('cSecret')
+    data.aToken = self.request.get('aToken')
+    data.aTokenSecret = self.request.get('aTokenSecret')
+    data.gUser = self.request.get('gUser')
+    data.gPass = self.request.get('gPass')
+    data.gDocFile = unicode(self.request.get('gDocFile'))
+    data.gDocTbl = unicode(self.request.get('gDocTbl'))
+    data.statusFormat = unicode(self.request.get('statusFormat'))
+    data.statusColumns = self.request.get('statusColumns').split(',')
+    data.enabled = True if self.request.get('enabled') == 'on' else False
+    data.put()
+
+    self.redirect('/admin/masterlist')
+
 class RootRequestHandler(webapp.RequestHandler):
 
   def get(self):
-    self.response.out.write('Hack you!!!')
+    if users.is_current_user_admin():
+      self.redirect('/admin/masterlist')
+    else:
+      self.response.out.write('Hack you!!!')
           
 def main():
   application = webapp.WSGIApplication([
   ('/', RootRequestHandler),
+  ('/admin/masterlist', AdminMasterListRequestHandler),
+  ('/admin/masterinput', AdminMasterInputRequestHandler),
+  ('/admin/mastersubmit', AdminMasterSubmitRequestHandler),
+  ('/admin/sheet2datastore', Sheet2DatastoreHandler),
   ('/datastore2tweet', Datastore2TweetHandler),
-  ('/sheet2datastore', Sheet2DatastoreHandler),
   ], debug=False)
   util.run_wsgi_app(application)
 
