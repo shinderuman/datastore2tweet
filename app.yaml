@@ -4,5 +4,8 @@ runtime: python
 api_version: 1
 
 handlers:
+- url: /admin/.*
+  script: datastore2tweet.py
+  login: admin
 - url: .*
   script: datastore2tweet.py

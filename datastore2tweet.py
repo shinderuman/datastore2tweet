@@ -4,10 +4,13 @@ __author__ = 'lunch@spookies.in'
 
 
 import gdata.spreadsheet.text_db
+from gdata.alt.appengine import run_on_appengine
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
 from google.appengine.ext import db
 from google.appengine.api import users
+from datetime import datetime
+import random
 import logging
 
 G_DOC_MIN_RECORD   = 1
@@ -84,8 +87,53 @@ class Sheet2DatastoreHandler(webapp.RequestHandler):
 class Datastore2TweetHandler(webapp.RequestHandler):
   
   def get(self):
-    data = BotDataModel.all().get()
-    self.response.out.write(unicode(data.status))
+    base = datetime.now()
+    for masterData in MasterBotDataModel.all():
+      if masterData.cron != '':
+        if (base.hour % int(masterData.cron) == 0 and base.minute == 0 ):
+#        if True:
+          if masterData.type == 'seq':
+            self._seqTweet(masterData)
+          elif masterData.type == 'rnd':
+            self._rndTweet(masterData)
+
+
+  def _seqTweet(self, masterData):
+    seqData = db.GqlQuery("SELECT * FROM SeqDataModel WHERE mid = :1", masterData.mid).get()
+    if seqData == None:
+      seqData = SeqDataModel()
+      seqData.mid = masterData.mid
+      seqData.cnt = 1
+
+    botData = db.GqlQuery("SELECT * FROM BotDataModel WHERE mid = :1 AND seq = :2", masterData.mid, seqData.cnt).get()
+    if botData == None:
+      seqData.cnt = 1
+      botData = db.GqlQuery("SELECT * FROM BotDataModel WHERE mid = :1 AND seq = :2", masterData.mid, seqData.cnt).get()
+    
+    seqData.cnt = seqData.cnt + 1
+    seqData.put()
+
+    self._doTweet(masterData, botData)
+
+  def _rndTweet(self, masterData):
+    q = db.GqlQuery("SELECT * FROM BotDataModel WHERE mid = :1", masterData.mid)
+    botData = q.fetch(1, random.randint(1, q.count()) - 1)[0]
+
+    self._doTweet(masterData, botData)
+
+  def _doTweet(self, masterData, botData):
+    import oauth
+    client = oauth.TwitterClient(masterData.cKey,
+                                 masterData.cSecret, None)
+    run_on_appengine(client, store_tokens=False, single_user_mode=True)                                 
+    param = {'status': botData.status}
+    client.make_request('http://twitter.com/statuses/update.json',
+                        token=masterData.aToken,
+                        secret=masterData.aTokenSecret,
+                        additional_params=param,
+                        protected=True,
+                        method='POST')
+    logging.info(botData.status)
       
 class AdminMasterListRequestHandler(webapp.RequestHandler):
   def get(self):
@@ -127,7 +175,7 @@ class AdminMasterInputRequestHandler(webapp.RequestHandler):
   <tr><td>TWITTER_ACCESS_TOKEN_SECRET</td><td><input type="text" name="aTokenSecret" value="%s"/></td></tr>
   <tr><td colspan="2">GoogleDocs認証</td></tr>
   <tr><td>GoogleMailAddress</td><td><input type="text" name="gUser" value="%s"/></td></tr>
-  <tr><td>GooglePassword</td><td><input type="text" name="gPass" value="%s"/></td></tr>
+  <tr><td>GooglePassword</td><td><input type="text" name="gPass" value=""/></td></tr>
   <tr><td>GoogleDocファイル名</td><td><input type="text" name="gDocFile" value="%s"/></td></tr>
   <tr><td>GoogleDocシート名</td><td><input type="text" name="gDocTbl" value="%s"/></td></tr>
   <tr><td colspan="2">その他</td></tr>
@@ -146,7 +194,6 @@ class AdminMasterInputRequestHandler(webapp.RequestHandler):
       aToken = data.aToken.encode('utf_8')
       aTokenSecret = data.aTokenSecret.encode('utf_8')
       gUser = data.gUser.encode('utf_8')
-      gPass = data.gPass.encode('utf_8')
       gDocFile = data.gDocFile.encode('utf_8')
       gDocTbl = data.gDocTbl.encode('utf_8')
       statusFormat = data.statusFormat.encode('utf_8')
@@ -154,11 +201,11 @@ class AdminMasterInputRequestHandler(webapp.RequestHandler):
       enabled = 'checked="checked"' if data.enabled else ''
 
       self.response.out.write(html % (mid, name, cron, cKey, cSecret,aToken, aTokenSecret, 
-                                      gUser, gPass, gDocFile, gDocTbl, 
+                                      gUser, gDocFile, gDocTbl, 
                                       statusFormat, statusColumns, enabled))
 
     else:
-      self.response.out.write(html % (0, '', '', '', '', '', '', '', '', '', '', '', '', 'checked="checked"'))
+      self.response.out.write(html % (0, '', '',  '', '', '', '', '', '', '', '', '', 'checked="checked"'))
 
     self.response.out.write("""
   <tr><td colspan="2">
