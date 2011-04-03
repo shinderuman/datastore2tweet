@@ -88,9 +88,10 @@ class Datastore2TweetHandler(webapp.RequestHandler):
   
   def get(self):
     base = datetime.now()
-    for masterData in MasterBotDataModel.all():
+    minute = base.hour * 60 + base.minute
+    for masterData in db.GqlQuery('SELECT * FROM MasterBotDataModel WHERE enabled = True'):
       if masterData.cron != '':
-        if (base.hour % int(masterData.cron) == 0 and base.minute == 0 ):
+        if (minute % int(masterData.cron) == 0):
 #        if True:
           if masterData.type == 'seq':
             self._seqTweet(masterData)
@@ -164,10 +165,10 @@ class AdminMasterInputRequestHandler(webapp.RequestHandler):
   <tr><td>ID</td><td><input type="text" name="mid" value="%d"/></td></tr>
   <tr><td>bot名</td><td><input type="text" name="name" value="%s"/></td></tr>
   <tr><td>botタイプ</td><td><select name="type">
-    <option value="rnd">ランダム</option>
-    <option value="seq">順番</option>
+    <option value="rnd" %s>ランダム</option>
+    <option value="seq" %s>順番</option>
   </select></td></tr>
-  <tr><td>起動間隔</td><td><input type="text" name="cron" value="%s"/></td></tr>
+  <tr><td>起動間隔(分)</td><td><input type="text" name="cron" value="%s"/></td></tr>
   <tr><td colspan="2">Twitter認証</td></tr>
   <tr><td>TWITTER_CONSUMER_KEY</td><td><input type="text" name="cKey" value="%s"/></td></tr>
   <tr><td>TWITTER_CONSUMER_SECRET</td><td><input type="text" name="cSecret" value="%s"/></td></tr>
@@ -188,6 +189,13 @@ class AdminMasterInputRequestHandler(webapp.RequestHandler):
 
       mid = data.mid
       name = data.name.encode('utf_8')
+      if data.type == u'rnd':
+        rnd = 'selected="selected"'
+        seq = ''
+      else:
+        rnd = ''
+        seq = 'selected="selected"'
+
       cron = data.cron.encode('utf_8')
       cKey = data.cKey.encode('utf_8')
       cSecret = data.cSecret.encode('utf_8')
@@ -200,12 +208,12 @@ class AdminMasterInputRequestHandler(webapp.RequestHandler):
       statusColumns = ",".join(data.statusColumns).encode('utf_8')
       enabled = 'checked="checked"' if data.enabled else ''
 
-      self.response.out.write(html % (mid, name, cron, cKey, cSecret,aToken, aTokenSecret, 
+      self.response.out.write(html % (mid, name, rnd, seq, cron, cKey, cSecret,aToken, aTokenSecret, 
                                       gUser, gDocFile, gDocTbl, 
                                       statusFormat, statusColumns, enabled))
 
     else:
-      self.response.out.write(html % (0, '', '',  '', '', '', '', '', '', '', '', '', 'checked="checked"'))
+      self.response.out.write(html % (0, '', '',  '', '', '', '', '', '', '', '', '', '', '', 'checked="checked"'))
 
     self.response.out.write("""
   <tr><td colspan="2">
@@ -221,7 +229,7 @@ class AdminMasterSubmitRequestHandler(webapp.RequestHandler):
       data = MasterBotDataModel()
     
     data.mid = int(self.request.get('mid'))
-    data.name = unicode(self.request.get('name'))
+    data.name = self.request.get('name')
     data.type = self.request.get('type')
     data.cron = self.request.get('cron')
     data.cKey = self.request.get('cKey')
@@ -229,10 +237,10 @@ class AdminMasterSubmitRequestHandler(webapp.RequestHandler):
     data.aToken = self.request.get('aToken')
     data.aTokenSecret = self.request.get('aTokenSecret')
     data.gUser = self.request.get('gUser')
-    data.gPass = self.request.get('gPass')
-    data.gDocFile = unicode(self.request.get('gDocFile'))
-    data.gDocTbl = unicode(self.request.get('gDocTbl'))
-    data.statusFormat = unicode(self.request.get('statusFormat'))
+    data.gPass = self.request.get('gPass') if self.request.get('gPass') != '' else data.gPass
+    data.gDocFile = self.request.get('gDocFile')
+    data.gDocTbl = self.request.get('gDocTbl')
+    data.statusFormat = self.request.get('statusFormat')
     data.statusColumns = self.request.get('statusColumns').split(',')
     data.enabled = True if self.request.get('enabled') == 'on' else False
     data.put()
