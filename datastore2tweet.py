@@ -213,7 +213,7 @@ class AdminMasterInputRequestHandler(webapp.RequestHandler):
                                       statusFormat, statusColumns, enabled))
 
     else:
-      self.response.out.write(html % (0, '', '',  '', '', '', '', '', '', '', '', '', '', '', 'checked="checked"'))
+      self.response.out.write(html % (MasterBotDataModel.all().count() + 1, '', '',  '', '', '', '', '', '', '', '', '', '', '', 'checked="checked"'))
 
     self.response.out.write("""
   <tr><td colspan="2">

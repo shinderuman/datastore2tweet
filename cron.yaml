@@ -1,1 +1,4 @@
 cron:
+- description: tweet cron
+  url: /datastore2tweet
+  schedule: every 1 minutes
