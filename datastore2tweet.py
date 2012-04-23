@@ -67,7 +67,7 @@ class Sheet2DatastoreHandler(webapp.RequestHandler):
     seq = 0
     for record in table.GetRecords(G_DOC_MIN_RECORD, G_DOC_MAX_RECORD):
       content = record.content
-      
+
       length = 10 + 10
       for column in statusColumns:
         length = length + len(content[column])
@@ -85,7 +85,7 @@ class Sheet2DatastoreHandler(webapp.RequestHandler):
 
 
 class Datastore2TweetHandler(webapp.RequestHandler):
-  
+
   def get(self):
     base = datetime.now()
     minute = base.hour * 60 + base.minute
@@ -110,7 +110,7 @@ class Datastore2TweetHandler(webapp.RequestHandler):
     if botData == None:
       seqData.cnt = 1
       botData = db.GqlQuery("SELECT * FROM BotDataModel WHERE mid = :1 AND seq = :2", masterData.mid, seqData.cnt).get()
-    
+
     seqData.cnt = seqData.cnt + 1
     seqData.put()
 
@@ -126,7 +126,7 @@ class Datastore2TweetHandler(webapp.RequestHandler):
     import oauth
     client = oauth.TwitterClient(masterData.cKey,
                                  masterData.cSecret, None)
-    run_on_appengine(client, store_tokens=False, single_user_mode=True)                                 
+    run_on_appengine(client, store_tokens=False, single_user_mode=True)
     param = {'status': botData.status}
     client.make_request('http://twitter.com/statuses/update.json',
                         token=masterData.aToken,
@@ -135,7 +135,7 @@ class Datastore2TweetHandler(webapp.RequestHandler):
                         protected=True,
                         method='POST')
     logging.info(botData.status)
-      
+
 class AdminMasterListRequestHandler(webapp.RequestHandler):
   def get(self):
     self.response.out.write('<html><body><table>')
@@ -208,8 +208,8 @@ class AdminMasterInputRequestHandler(webapp.RequestHandler):
       statusColumns = ",".join(data.statusColumns).encode('utf_8')
       enabled = 'checked="checked"' if data.enabled else ''
 
-      self.response.out.write(html % (mid, name, rnd, seq, cron, cKey, cSecret,aToken, aTokenSecret, 
-                                      gUser, gDocFile, gDocTbl, 
+      self.response.out.write(html % (mid, name, rnd, seq, cron, cKey, cSecret,aToken, aTokenSecret,
+                                      gUser, gDocFile, gDocTbl,
                                       statusFormat, statusColumns, enabled))
 
     else:
@@ -227,7 +227,7 @@ class AdminMasterSubmitRequestHandler(webapp.RequestHandler):
     data = db.GqlQuery('SELECT * FROM MasterBotDataModel WHERE mid = :1', int(self.request.get('mid'))).get()
     if data == None:
       data = MasterBotDataModel()
-    
+
     data.mid = int(self.request.get('mid'))
     data.name = self.request.get('name')
     data.type = self.request.get('type')
@@ -254,7 +254,7 @@ class RootRequestHandler(webapp.RequestHandler):
       self.redirect('/admin/masterlist')
     else:
       self.response.out.write('Hack you!!!')
-          
+
 def main():
   application = webapp.WSGIApplication([
   ('/', RootRequestHandler),

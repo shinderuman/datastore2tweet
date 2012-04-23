@@ -4,6 +4,9 @@ runtime: python
 api_version: 1
 
 handlers:
+- url: /google126209d134624d0d.html
+  static_files: google126209d134624d0d.html
+  upload: google126209d134624d0d.html
 - url: /admin/.*
   script: datastore2tweet.py
   login: admin
