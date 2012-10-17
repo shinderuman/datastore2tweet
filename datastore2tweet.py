@@ -128,7 +128,7 @@ class Datastore2TweetHandler(webapp.RequestHandler):
                                  masterData.cSecret, None)
     run_on_appengine(client, store_tokens=False, single_user_mode=True)
     param = {'status': botData.status}
-    client.make_request('http://twitter.com/statuses/update.json',
+    client.make_request('https://api.twitter.com/1.1/statuses/update.json',
                         token=masterData.aToken,
                         secret=masterData.aTokenSecret,
                         additional_params=param,
